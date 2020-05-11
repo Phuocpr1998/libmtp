@@ -189,7 +189,7 @@ ptp_transaction_new (PTPParams* params, PTPContainer* ptp,
 	case PTP_DP_GETDATA:
 		{
 			uint16_t ret = params->getdata_func(params, ptp, handler);
-			if (ret == PTP_ERROR_IO) { // hotfix camera gopro hero 7 black
+			if (ret == PTP_ERROR_IO || ret == PTP_ERROR_TIMEOUT) { // hotfix camera gopro hero 7 black
 				ret = params->getdata_func(params, ptp, handler);
 			}
 			if (ret == PTP_ERROR_CANCEL)
