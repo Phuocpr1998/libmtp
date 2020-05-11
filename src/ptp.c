@@ -168,11 +168,20 @@ ptp_transaction_new (PTPParams* params, PTPContainer* ptp,
 	cmd = ptp->Code;
 	ptp->Transaction_ID=params->transaction_id++;
 	ptp->SessionID=params->session_id;
+
+
 	/* send request */
 	uint16_t retReq = params->sendreq_func (params, ptp, flags);
-	if (retReq != PTP_RC_OK){ // double send request
-		CHECK_PTP_RC(params->sendreq_func (params, ptp, flags));
+	// retry send request
+	tries = 2;
+	while (tries--) {
+		if (retReq == PTP_RC_OK){ 
+			break;
+		}
+		usleep(2000000); // 2s
+		retReq = params->sendreq_func (params, ptp, flags);
 	}
+	CHECK_PTP_RC(retReq);
 	/* is there a dataphase? */
 	switch (flags&PTP_DP_DATA_MASK) {
 	case PTP_DP_SENDDATA:
@@ -180,20 +189,34 @@ ptp_transaction_new (PTPParams* params, PTPContainer* ptp,
 			uint16_t ret = params->senddata_func(params, ptp, sendlen, handler);
 			if (ret == PTP_ERROR_CANCEL)
 				CHECK_PTP_RC(params->cancelreq_func(params, params->transaction_id-1));
-			if (ret != PTP_RC_OK){ // double send data
+			
+			// retry send data
+			tries = 2;
+			while (tries--) {
+				if (ret == PTP_RC_OK){ 
+					break;
+				}
+				usleep(2000000); // 2s
 				ret = params->senddata_func(params, ptp, sendlen, handler);
-			}	
+			}
 			CHECK_PTP_RC(ret);
 		}
 		break;
 	case PTP_DP_GETDATA:
 		{
 			uint16_t ret = params->getdata_func(params, ptp, handler);
-			if (ret == PTP_ERROR_IO || ret == PTP_ERROR_TIMEOUT) { // hotfix camera gopro hero 7 black
-				ret = params->getdata_func(params, ptp, handler);
-			}
 			if (ret == PTP_ERROR_CANCEL)
 				CHECK_PTP_RC(params->cancelreq_func(params, params->transaction_id-1));
+
+			// retry get data
+			tries = 2;
+			while (tries--) {
+				if (ret == PTP_RC_OK){ 
+					break;
+				}
+				usleep(2000000); // 2s
+				ret = params->getdata_func(params, ptp, handler);
+			}	
 			CHECK_PTP_RC(ret);
 		}
 		break;
@@ -202,7 +225,7 @@ ptp_transaction_new (PTPParams* params, PTPContainer* ptp,
 	default:
 		return PTP_ERROR_BADPARAM;
 	}
-	tries = 3;
+	tries = 5;
 	while (tries--) {
 		uint16_t ret;
 		/* get response */
@@ -210,6 +233,7 @@ ptp_transaction_new (PTPParams* params, PTPContainer* ptp,
 		if (ret == PTP_ERROR_RESP_EXPECTED) {
 			ptp_debug (params,"PTP: response expected but not got, retrying.");
 			tries++;
+			usleep(1000000);
 			continue;
 		}
 		CHECK_PTP_RC(ret);
